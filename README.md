@@ -1,5 +1,7 @@
 # StrmThumbnail
 
+本人自用,适合刮削MMD这样的无组织视频,如果要刮削电影请去看[TinyMediaManager](https://www.tinymediamanager.org/)，要刮削小电影请去看[MetaTube](https://github.com/metatube-community)，专注于为 Emby/Jellyfin 生成 STRM 文件的缩略图（Poster/Fanart），并提供一个简单的 Web UI 来管理和监控这个过程。
+
 基于 FastAPI + Vue3 的 STRM 缩略图生成服务，支持：
 
 - 配置管理（SQLite）
