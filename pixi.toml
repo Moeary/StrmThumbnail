@@ -1,0 +1,26 @@
+[workspace]
+authors = ["Moeary <Minecraftyyxx@gmail.com>"]
+channels = ["conda-forge"]
+name = "StrmThumbnail"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[tasks]
+start = "python app/main.py"
+lint = "python -m compileall app"
+build = "nuitka --standalone --onefile --enable-plugin=pyside6 --output-dir=dist --remove-output app/main.py"
+
+[dependencies]
+python = ">=3.11,<3.13"
+pip = ">=24,<26"
+
+#下面是编译要用的
+
+[pypi-dependencies]
+pyside6 = ">=6.9.0,<7"
+apscheduler = ">=3.11.0,<4"
+psutil = ">=7.0.0,<8"
+tqdm = ">=4.67.1,<5"
+zstandard = ">=0.25.0,<0.26"
+nuitka = ">=2.8.9,<3"
+pyside6-fluent-widgets = ">=1.10.2, <2"

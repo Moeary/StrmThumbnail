@@ -1,57 +1,57 @@
-# StrmThumbnail
+# StrmThumbnail (Desktop)
 
-本人自用,适合刮削MMD这样的无组织视频,如果要刮削电影请去看[TinyMediaManager](https://www.tinymediamanager.org/)，要刮削小电影请去看[MetaTube](https://github.com/metatube-community)，专注于为 Emby/Jellyfin 生成 STRM 文件的缩略图（Poster/Fanart），并提供一个简单的 Web UI 来管理和监控这个过程。
+Windows 桌面版 STRM 缩略图工具，专注于为 Emby/Jellyfin 生成 `poster/fanart/nfo`，并通过卡片化配置管理多个目录。
 
-基于 FastAPI + Vue3 的 STRM 缩略图生成服务，支持：
+## 当前实现
 
-- 配置管理（SQLite）
-- 手动全量/增量扫描
-- WebSocket 实时日志与进度
-- APScheduler Cron 定时任务
-- 单容器部署（内置前端静态页面）
+- GUI：PySide6（QWidget）
+- 调度：APScheduler（每卡片 Cron）
+- 存储：SQLite（卡片配置与运行记录）
+- 引擎：ffprobe/ffmpeg 抽帧 + NFO 生成
+- 模式：全量 / 增量
 
 ## 目录结构
 
-- `backend/` FastAPI 后端
-- `frontend/` Vue3 前端
-- `Dockerfile` 多阶段构建
-- `docker-compose.yml` 容器编排示例
-
-## 本地开发
-
-### 1) 启动后端
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8090
+```text
+app/
+	main.py
+	core/
+		network_guard.py
+		runner.py
+		scraper.py
+		storage.py
+	ui/
+		main_window.py
+		dialogs/
+			profile_editor.py
+config/
+	strmthumbnail/
+pixi.toml
+plan.md
 ```
 
-### 2) 启动前端
+## 使用 Pixi 运行
+
+1. 安装依赖
 
 ```bash
-cd frontend
-npm install
-npm run dev
+pixi install
 ```
 
-开发时访问：
-- 前端：`http://localhost:5173`
-- 后端：`http://localhost:8090`
-
-## Docker 启动
+2. 启动桌面应用
 
 ```bash
-docker compose up -d --build
+pixi run run
 ```
 
-访问：`http://localhost:8090`
+3. 快速语法检查
 
-## API 概览
+```bash
+pixi run lint
+```
 
-- `GET /api/config` 获取配置
-- `POST /api/config` 保存配置
-- `POST /api/task/start` 启动任务（`mode`: `full`/`incremental`）
-- `POST /api/task/stop` 停止任务
-- `GET /api/stats` 获取统计
-- `WS /ws/stream` 实时日志与进度
+## 说明
+
+- 数据库路径：`config/strmthumbnail/app.db`
+- 抽帧依赖 `ffmpeg/ffprobe`（已在 `pixi.toml` 声明）
+- 全量模式会覆盖历史生成文件，切换时有确认
