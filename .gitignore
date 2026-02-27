@@ -1,1 +1,9 @@
 plan.md
+# pixi environments
+.pixi/*
+!.pixi/config.toml
+
+strm/*
+.vscode/*
+
+*.pyc
