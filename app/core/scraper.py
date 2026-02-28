@@ -49,6 +49,20 @@ class ProcessResult:
     downloaded_bytes: int = 0
 
 
+@dataclass(slots=True)
+class ArtifactState:
+    poster_exists: bool
+    fanart_exists: bool
+    nfo_exists: bool
+
+
+@dataclass(slots=True)
+class PlanResult:
+    options: ScrapeOptions
+    artifact_state: ArtifactState
+    should_run: bool
+
+
 def _read_url(strm_path: Path) -> str:
     try:
         with strm_path.open("r", encoding="utf-8") as handle:
@@ -131,6 +145,58 @@ def generate_nfo(strm_path: Path, duration: float | None) -> bool:
         return False
 
 
+def _artifact_candidates(strm_path: Path) -> tuple[list[Path], list[Path], list[Path]]:
+    base = strm_path.with_suffix("")
+    poster_candidates = [
+        strm_path.with_suffix(".jpg"),
+        strm_path.with_suffix(".png"),
+        Path(f"{base}-poster.jpg"),
+        Path(f"{base}-poster.png"),
+    ]
+    fanart_candidates = [
+        Path(str(strm_path).replace(".strm", "-fanart.jpg")),
+        Path(str(strm_path).replace(".strm", "-fanart.png")),
+        strm_path.parent / "fanart.jpg",
+        strm_path.parent / "fanart.png",
+    ]
+    nfo_candidates = [strm_path.with_suffix(".nfo")]
+    return poster_candidates, fanart_candidates, nfo_candidates
+
+
+def get_artifact_state(strm_path: Path) -> ArtifactState:
+    poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(strm_path)
+    poster_exists = any(path.exists() for path in poster_candidates)
+    fanart_exists = any(path.exists() for path in fanart_candidates)
+    nfo_exists = any(path.exists() for path in nfo_candidates)
+    return ArtifactState(
+        poster_exists=poster_exists,
+        fanart_exists=fanart_exists,
+        nfo_exists=nfo_exists,
+    )
+
+
+def plan_for_incremental(strm_path: Path, base_options: ScrapeOptions) -> PlanResult:
+    state = get_artifact_state(strm_path)
+    need_poster = base_options.generate_poster and not state.poster_exists
+    need_fanart = base_options.generate_fanart and not state.fanart_exists
+    need_nfo = base_options.generate_nfo and not state.nfo_exists
+
+    options = ScrapeOptions(
+        full=False,
+        generate_poster=need_poster,
+        generate_fanart=need_fanart,
+        generate_nfo=need_nfo,
+        overwrite=False,
+        poster_pct=base_options.poster_pct,
+        fanart_pct=base_options.fanart_pct,
+    )
+    return PlanResult(
+        options=options,
+        artifact_state=state,
+        should_run=bool(need_poster or need_fanart or need_nfo),
+    )
+
+
 def process_single_strm(
     strm_path: Path,
     options: ScrapeOptions,
@@ -143,13 +209,15 @@ def process_single_strm(
     mode_full = options.full or options.overwrite
 
     if not mode_full:
-        need_poster = options.generate_poster and not poster_path.exists()
-        need_fanart = options.generate_fanart and not fanart_path.exists()
-        need_nfo = options.generate_nfo and not nfo_path.exists()
+        state = get_artifact_state(strm_path)
+        need_poster = options.generate_poster and not state.poster_exists
+        need_fanart = options.generate_fanart and not state.fanart_exists
+        need_nfo = options.generate_nfo and not state.nfo_exists
         if not (need_poster or need_fanart or need_nfo):
             return ProcessResult(status="skipped", path=strm_path, message="already exists")
     else:
-        for p in [poster_path, fanart_path, nfo_path]:
+        poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(strm_path)
+        for p in [*poster_candidates, *fanart_candidates, *nfo_candidates]:
             if p.exists():
                 p.unlink(missing_ok=True)
 

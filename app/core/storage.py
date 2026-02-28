@@ -76,6 +76,23 @@ class Storage:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS file_state (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id INTEGER NOT NULL,
+                    strm_path TEXT NOT NULL,
+                    poster_exists INTEGER NOT NULL DEFAULT 0,
+                    fanart_exists INTEGER NOT NULL DEFAULT 0,
+                    nfo_exists INTEGER NOT NULL DEFAULT 0,
+                    last_status TEXT NOT NULL DEFAULT '',
+                    last_error TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(profile_id, strm_path),
+                    FOREIGN KEY(profile_id) REFERENCES profiles(id)
+                )
+                """
+            )
 
     def _migrate_profiles_schema(self, conn: sqlite3.Connection) -> None:
         rows = conn.execute("PRAGMA table_info(profiles)").fetchall()
@@ -161,6 +178,22 @@ class Storage:
                     ),
                 )
 
+    def _profile_columns(self, conn: sqlite3.Connection) -> set[str]:
+        rows = conn.execute("PRAGMA table_info(profiles)").fetchall()
+        return {row[1] for row in rows}
+
+    def _legacy_settings_json(self, profile: Profile) -> str:
+        payload = {
+            "threads": profile.threads,
+            "generate_nfo": profile.generate_nfo,
+            "overwrite_existing": profile.overwrite_existing,
+            "generate_poster": profile.generate_poster,
+            "generate_fanart": profile.generate_fanart,
+            "poster_pct": profile.poster_pct,
+            "fanart_pct": profile.fanart_pct,
+        }
+        return json.dumps(payload, ensure_ascii=False)
+
     @staticmethod
     def _row_value(row: sqlite3.Row, key: str, default=None):
         keys = row.keys()
@@ -225,30 +258,37 @@ class Storage:
     def create_profile(self, profile: Profile) -> int:
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
+            columns = self._profile_columns(conn)
+            values: dict[str, object] = {
+                "name": profile.name,
+                "directory": profile.directory,
+                "threads": profile.threads,
+                "cron": profile.cron,
+                "enabled": int(profile.enabled),
+                "scheduled": int(profile.scheduled),
+                "generate_nfo": int(profile.generate_nfo),
+                "overwrite_existing": int(profile.overwrite_existing),
+                "generate_poster": int(profile.generate_poster),
+                "generate_fanart": int(profile.generate_fanart),
+                "poster_pct": profile.poster_pct,
+                "fanart_pct": profile.fanart_pct,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+            if "relative_path" in columns:
+                values["relative_path"] = profile.directory
+            if "schedule_enabled" in columns:
+                values["schedule_enabled"] = int(profile.scheduled)
+            if "settings_json" in columns:
+                values["settings_json"] = self._legacy_settings_json(profile)
+
+            filtered = {key: val for key, val in values.items() if key in columns}
+            columns_sql = ", ".join(filtered.keys())
+            placeholders = ", ".join(["?"] * len(filtered))
             cur = conn.execute(
-                """
-                INSERT INTO profiles (
-                    name, directory, threads, cron, enabled, scheduled,
-                    generate_nfo, overwrite_existing, generate_poster, generate_fanart,
-                    poster_pct, fanart_pct, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    profile.name,
-                    profile.directory,
-                    profile.threads,
-                    profile.cron,
-                    int(profile.enabled),
-                    int(profile.scheduled),
-                    int(profile.generate_nfo),
-                    int(profile.overwrite_existing),
-                    int(profile.generate_poster),
-                    int(profile.generate_fanart),
-                    profile.poster_pct,
-                    profile.fanart_pct,
-                    now,
-                    now,
-                ),
+                f"INSERT INTO profiles ({columns_sql}) VALUES ({placeholders})",
+                tuple(filtered.values()),
             )
             return int(cur.lastrowid)
 
@@ -257,35 +297,82 @@ class Storage:
             raise ValueError("profile id is required")
         now = datetime.now().isoformat(timespec="seconds")
         with self._connect() as conn:
+            columns = self._profile_columns(conn)
+            values: dict[str, object] = {
+                "name": profile.name,
+                "directory": profile.directory,
+                "threads": profile.threads,
+                "cron": profile.cron,
+                "enabled": int(profile.enabled),
+                "scheduled": int(profile.scheduled),
+                "generate_nfo": int(profile.generate_nfo),
+                "overwrite_existing": int(profile.overwrite_existing),
+                "generate_poster": int(profile.generate_poster),
+                "generate_fanart": int(profile.generate_fanart),
+                "poster_pct": profile.poster_pct,
+                "fanart_pct": profile.fanart_pct,
+                "updated_at": now,
+            }
+
+            if "relative_path" in columns:
+                values["relative_path"] = profile.directory
+            if "schedule_enabled" in columns:
+                values["schedule_enabled"] = int(profile.scheduled)
+            if "settings_json" in columns:
+                values["settings_json"] = self._legacy_settings_json(profile)
+
+            filtered = {key: val for key, val in values.items() if key in columns}
+            assignments = ", ".join(f"{key} = ?" for key in filtered)
             conn.execute(
-                """
-                UPDATE profiles SET
-                    name = ?, directory = ?, threads = ?, cron = ?, enabled = ?, scheduled = ?,
-                    generate_nfo = ?, overwrite_existing = ?, generate_poster = ?, generate_fanart = ?,
-                    poster_pct = ?, fanart_pct = ?, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    profile.name,
-                    profile.directory,
-                    profile.threads,
-                    profile.cron,
-                    int(profile.enabled),
-                    int(profile.scheduled),
-                    int(profile.generate_nfo),
-                    int(profile.overwrite_existing),
-                    int(profile.generate_poster),
-                    int(profile.generate_fanart),
-                    profile.poster_pct,
-                    profile.fanart_pct,
-                    now,
-                    profile.id,
-                ),
+                f"UPDATE profiles SET {assignments} WHERE id = ?",
+                (*tuple(filtered.values()), profile.id),
             )
 
     def delete_profile(self, profile_id: int) -> None:
         with self._connect() as conn:
+            conn.execute("DELETE FROM file_state WHERE profile_id = ?", (profile_id,))
             conn.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
+
+    def upsert_file_state(
+        self,
+        *,
+        profile_id: int | None,
+        strm_path: str,
+        poster_exists: bool,
+        fanart_exists: bool,
+        nfo_exists: bool,
+        last_status: str,
+        last_error: str = "",
+    ) -> None:
+        if profile_id is None:
+            return
+        now = datetime.now().isoformat(timespec="seconds")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO file_state (
+                    profile_id, strm_path, poster_exists, fanart_exists, nfo_exists,
+                    last_status, last_error, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(profile_id, strm_path) DO UPDATE SET
+                    poster_exists = excluded.poster_exists,
+                    fanart_exists = excluded.fanart_exists,
+                    nfo_exists = excluded.nfo_exists,
+                    last_status = excluded.last_status,
+                    last_error = excluded.last_error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    profile_id,
+                    strm_path,
+                    int(poster_exists),
+                    int(fanart_exists),
+                    int(nfo_exists),
+                    last_status,
+                    last_error,
+                    now,
+                ),
+            )
 
     def log_run_start(self, profile_id: int | None, mode: str) -> int:
         now = datetime.now().isoformat(timespec="seconds")

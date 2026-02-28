@@ -31,6 +31,7 @@ from qfluentwidgets import (
     LineEdit,
     PrimaryPushButton,
     PushButton,
+    ProgressRing,
     SearchLineEdit,
     SimpleCardWidget,
     SpinBox,
@@ -129,22 +130,26 @@ class MainWindow(FluentWindow):
 
         status_box = SimpleCardWidget()
         status_layout = QHBoxLayout()
+        status_layout.setContentsMargins(12, 12, 12, 12)
+
+        left_status = QVBoxLayout()
         status_title = QLabel("任务状态")
-        status_title.setStyleSheet("font-size:14px;font-weight:600;")
-        status_layout.addWidget(status_title)
-        self.progress_label = QLabel("进度 0/0")
-        self.success_label = QLabel("成功 0")
-        self.failed_label = QLabel("失败 0")
-        self.skipped_label = QLabel("跳过 0")
-        self.elapsed_label = QLabel("耗时 0.0s")
-        for widget in [
-            self.progress_label,
-            self.success_label,
-            self.failed_label,
-            self.skipped_label,
-            self.elapsed_label,
-        ]:
-            status_layout.addWidget(widget)
+        status_title.setStyleSheet("font-size:18px;font-weight:700;")
+        left_status.addWidget(status_title)
+        self.status_line = BodyLabel("进度 0/0  成功 0  失败 0  跳过 0")
+        self.elapsed_label = BodyLabel("耗时 0.0s")
+        left_status.addWidget(self.status_line)
+        left_status.addWidget(self.elapsed_label)
+        left_status.addStretch(1)
+
+        self.progress_ring = ProgressRing()
+        self.progress_ring.setRange(0, 100)
+        self.progress_ring.setValue(0)
+        self.progress_ring.setFixedSize(96, 96)
+
+        status_layout.addLayout(left_status)
+        status_layout.addStretch(1)
+        status_layout.addWidget(self.progress_ring)
         status_layout.addStretch(1)
         status_box.setLayout(status_layout)
         left.addWidget(status_box)
@@ -233,6 +238,20 @@ class MainWindow(FluentWindow):
 
     def _apply_theme(self) -> None:
         self.theme_btn.setText("切换浅色" if isDarkTheme() else "切换深色")
+        if isDarkTheme():
+            self.dashboard.setStyleSheet(
+                """
+                QWidget#dashboard QLabel { color: #f5f5f5; }
+                QWidget#dashboard QTableWidget { color: #f5f5f5; }
+                """
+            )
+        else:
+            self.dashboard.setStyleSheet(
+                """
+                QWidget#dashboard QLabel { color: #202124; }
+                QWidget#dashboard QTableWidget { color: #202124; }
+                """
+            )
 
     def toggle_mode(self) -> None:
         if self._current_mode == "incremental":
@@ -266,7 +285,12 @@ class MainWindow(FluentWindow):
             enabled=self.new_enable_check.isChecked(),
             scheduled=self.new_schedule_check.isChecked(),
         )
-        self.storage.create_profile(profile)
+        try:
+            self.storage.create_profile(profile)
+        except Exception as exc:
+            QMessageBox.critical(self, "新增失败", f"保存卡片失败：{exc}")
+            self.append_log(f"[create-failed] {name}: {exc}")
+            return
         self.name_input.clear()
         self.path_input.clear()
         self.append_log(f"[create] {name}")
@@ -386,11 +410,13 @@ class MainWindow(FluentWindow):
     def update_stats(self, payload: dict) -> None:
         done = payload.get("done", 0)
         total = payload.get("total", 0)
-        self.progress_label.setText(f"进度 {done}/{total}")
-        self.success_label.setText(f"成功 {payload.get('success', 0)}")
-        self.failed_label.setText(f"失败 {payload.get('failed', 0)}")
-        self.skipped_label.setText(f"跳过 {payload.get('skipped', 0)}")
+        success = payload.get("success", 0)
+        failed = payload.get("failed", 0)
+        skipped = payload.get("skipped", 0)
+        self.status_line.setText(f"进度 {done}/{total}  成功 {success}  失败 {failed}  跳过 {skipped}")
         self.elapsed_label.setText(f"耗时 {payload.get('elapsed', 0):.1f}s")
+        percent = int((done / total) * 100) if total else 0
+        self.progress_ring.setValue(percent)
 
     def on_run_finished(self, payload: dict) -> None:
         self._running = False
