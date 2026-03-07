@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -134,22 +135,36 @@ class MainWindow(FluentWindow):
 
         left_status = QVBoxLayout()
         status_title = QLabel("任务状态")
-        status_title.setStyleSheet("font-size:18px;font-weight:700;")
+        status_title.setStyleSheet("font-size:16px;font-weight:700;")
         left_status.addWidget(status_title)
-        self.status_line = BodyLabel("进度 0/0  成功 0  失败 0  跳过 0")
+        metrics_row = QHBoxLayout()
+        metrics_row.setSpacing(14)
+        self.success_label = BodyLabel("成功 0")
+        self.failed_label = BodyLabel("失败 0")
+        self.skipped_label = BodyLabel("跳过 0")
         self.elapsed_label = BodyLabel("耗时 0.0s")
-        left_status.addWidget(self.status_line)
-        left_status.addWidget(self.elapsed_label)
+        for widget in [self.success_label, self.failed_label, self.skipped_label, self.elapsed_label]:
+            metrics_row.addWidget(widget)
+        metrics_row.addStretch(1)
+        left_status.addLayout(metrics_row)
         left_status.addStretch(1)
 
+        ring_wrap = QWidget()
+        ring_grid = QGridLayout(ring_wrap)
+        ring_grid.setContentsMargins(0, 0, 0, 0)
         self.progress_ring = ProgressRing()
         self.progress_ring.setRange(0, 100)
         self.progress_ring.setValue(0)
-        self.progress_ring.setFixedSize(96, 96)
+        self.progress_ring.setFixedSize(76, 76)
+        self.progress_center_label = QLabel("0/0")
+        self.progress_center_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.progress_center_label.setStyleSheet("font-size:13px;font-weight:700;")
+        ring_grid.addWidget(self.progress_ring, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
+        ring_grid.addWidget(self.progress_center_label, 0, 0, alignment=Qt.AlignmentFlag.AlignCenter)
 
         status_layout.addLayout(left_status)
         status_layout.addStretch(1)
-        status_layout.addWidget(self.progress_ring)
+        status_layout.addWidget(ring_wrap)
         status_layout.addStretch(1)
         status_box.setLayout(status_layout)
         left.addWidget(status_box)
@@ -413,7 +428,10 @@ class MainWindow(FluentWindow):
         success = payload.get("success", 0)
         failed = payload.get("failed", 0)
         skipped = payload.get("skipped", 0)
-        self.status_line.setText(f"进度 {done}/{total}  成功 {success}  失败 {failed}  跳过 {skipped}")
+        self.progress_center_label.setText(f"{done}/{total}")
+        self.success_label.setText(f"成功 {success}")
+        self.failed_label.setText(f"失败 {failed}")
+        self.skipped_label.setText(f"跳过 {skipped}")
         self.elapsed_label.setText(f"耗时 {payload.get('elapsed', 0):.1f}s")
         percent = int((done / total) * 100) if total else 0
         self.progress_ring.setValue(percent)

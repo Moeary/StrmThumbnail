@@ -238,10 +238,12 @@ def process_single_strm(
     success = True
     output_size = 0
     if options.generate_poster:
+        limiter.wait()
         ok, size = extract_frame(url, poster_path, duration * options.poster_pct)
         success = success and ok
         output_size += size
     if options.generate_fanart:
+        limiter.wait()
         ok, size = extract_frame(url, fanart_path, duration * options.fanart_pct)
         success = success and ok
         output_size += size

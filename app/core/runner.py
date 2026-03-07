@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -143,7 +144,9 @@ class Runner:
 
         run_id = self.storage.log_run_start(None, mode)
         done = stats.skipped
-        limiter = QPSLimiter(qps=2)
+        configured_qps = float(os.getenv("STRM_QPS", "0.5"))
+        limiter = QPSLimiter(qps=max(0.1, configured_qps))
+        log(f"[throttle] qps={max(0.1, configured_qps):.2f}")
 
         if on_progress:
             on_progress(stats.to_dict() | {"done": done})
