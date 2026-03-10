@@ -47,6 +47,15 @@ class Runner:
     def __init__(self, storage: Storage):
         self.storage = storage
 
+    @staticmethod
+    def _collect_profile_files(root: Path, profile: Profile) -> list[Path]:
+        files = list(root.glob("**/*.strm"))
+        if profile.include_local_media:
+            for ext in (".mp4", ".mkv", ".MP4", ".MKV"):
+                files.extend(root.glob(f"**/*{ext}"))
+        # Keep deterministic order for stable logs and progress behavior.
+        return sorted(set(files))
+
     def run_profiles(
         self,
         profiles: list[Profile],
@@ -72,7 +81,7 @@ class Runner:
             if not root.exists():
                 log(f"[invalid-path] {profile.name}: {root}")
                 continue
-            files = list(root.glob("**/*.strm"))
+            files = self._collect_profile_files(root, profile)
             log(f"[profile] {profile.name} files={len(files)} mode={mode}")
             files_by_profile.append((profile, files))
 

@@ -22,6 +22,7 @@ class Profile:
     generate_fanart: bool = False
     poster_pct: float = 0.1
     fanart_pct: float = 0.5
+    include_local_media: bool = False
 
 
 class Storage:
@@ -53,6 +54,7 @@ class Storage:
                     generate_fanart INTEGER NOT NULL DEFAULT 0,
                     poster_pct REAL NOT NULL DEFAULT 0.1,
                     fanart_pct REAL NOT NULL DEFAULT 0.5,
+                    include_local_media INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
@@ -119,6 +121,8 @@ class Storage:
             add_column("ALTER TABLE profiles ADD COLUMN poster_pct REAL NOT NULL DEFAULT 0.1")
         if "fanart_pct" not in columns:
             add_column("ALTER TABLE profiles ADD COLUMN fanart_pct REAL NOT NULL DEFAULT 0.5")
+        if "include_local_media" not in columns:
+            add_column("ALTER TABLE profiles ADD COLUMN include_local_media INTEGER NOT NULL DEFAULT 0")
 
         has_relative_path = "relative_path" in columns
         has_schedule_enabled = "schedule_enabled" in columns
@@ -191,6 +195,7 @@ class Storage:
             "generate_fanart": profile.generate_fanart,
             "poster_pct": profile.poster_pct,
             "fanart_pct": profile.fanart_pct,
+            "include_local_media": profile.include_local_media,
         }
         return json.dumps(payload, ensure_ascii=False)
 
@@ -237,6 +242,9 @@ class Storage:
             generate_fanart=bool(self._row_value(row, "generate_fanart", settings.get("generate_fanart", False))),
             poster_pct=float(self._row_value(row, "poster_pct", settings.get("poster_pct", 0.1))),
             fanart_pct=float(self._row_value(row, "fanart_pct", settings.get("fanart_pct", 0.5))),
+            include_local_media=bool(
+                self._row_value(row, "include_local_media", settings.get("include_local_media", False))
+            ),
         )
 
     def list_profiles(self, keyword: str = "") -> list[Profile]:
@@ -272,6 +280,7 @@ class Storage:
                 "generate_fanart": int(profile.generate_fanart),
                 "poster_pct": profile.poster_pct,
                 "fanart_pct": profile.fanart_pct,
+                "include_local_media": int(profile.include_local_media),
                 "created_at": now,
                 "updated_at": now,
             }
@@ -311,6 +320,7 @@ class Storage:
                 "generate_fanart": int(profile.generate_fanart),
                 "poster_pct": profile.poster_pct,
                 "fanart_pct": profile.fanart_pct,
+                "include_local_media": int(profile.include_local_media),
                 "updated_at": now,
             }
 

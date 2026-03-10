@@ -56,6 +56,9 @@ class ProfileEditorDialog(QDialog):
         self.fanart_pct_spin.setSingleStep(0.01)
         self.fanart_pct_spin.setValue(profile.fanart_pct)
 
+        self.local_media_check = CheckBox("包含本地视频(mp4/mkv)")
+        self.local_media_check.setChecked(profile.include_local_media)
+
         browse_button = PushButton("浏览")
         browse_button.clicked.connect(self._browse_directory)
 
@@ -82,6 +85,7 @@ class ProfileEditorDialog(QDialog):
         form.addRow("海报抽帧百分比", self.poster_pct_spin)
         form.addRow("", self.fanart_check)
         form.addRow("横图抽帧百分比", self.fanart_pct_spin)
+        form.addRow("", self.local_media_check)
 
         button_row = QHBoxLayout()
         button_row.addStretch(1)
@@ -135,4 +139,5 @@ class ProfileEditorDialog(QDialog):
             generate_fanart=self.fanart_check.isChecked(),
             poster_pct=self.poster_pct_spin.value(),
             fanart_pct=self.fanart_pct_spin.value(),
+            include_local_media=self.local_media_check.isChecked(),
         )

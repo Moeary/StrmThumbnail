@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 import webbrowser
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import (
     BodyLabel,
     CheckBox,
+    DoubleSpinBox,
     FluentIcon as FIF,
     FluentWindow,
     LineEdit,
@@ -74,6 +76,7 @@ class MainWindow(FluentWindow):
         self._current_mode = "incremental"
         self._running = False
         self._project_name = "test"
+        self._qps_env_key = "STRM_QPS"
 
         self.dashboard = QWidget(self)
         self.dashboard.setObjectName("dashboard")
@@ -113,6 +116,21 @@ class MainWindow(FluentWindow):
         self.mode_btn = PushButton("模式：增量")
         self.mode_btn.clicked.connect(self.toggle_mode)
         row.addWidget(self.mode_btn)
+
+        row.addWidget(BodyLabel("限流QPS"))
+        self.qps_enable_check = CheckBox("启用")
+        self.qps_enable_check.toggled.connect(self._apply_qps_setting)
+        row.addWidget(self.qps_enable_check)
+
+        self.qps_input = DoubleSpinBox()
+        self.qps_input.setDecimals(2)
+        self.qps_input.setRange(0.1, 5.0)
+        self.qps_input.setSingleStep(0.1)
+        self.qps_input.setFixedWidth(88)
+        self.qps_input.valueChanged.connect(self._apply_qps_setting)
+        row.addWidget(self.qps_input)
+
+        self._init_qps_controls()
 
         run_all_btn = PrimaryPushButton("运行全部卡片")
         run_all_btn.clicked.connect(self.run_all_profiles)
@@ -204,8 +222,11 @@ class MainWindow(FluentWindow):
         self.new_enable_check.setChecked(True)
         self.new_schedule_check = CheckBox("启用定时任务")
         self.new_schedule_check.setChecked(True)
+        self.new_local_media_check = CheckBox("包含本地视频(mp4/mkv)")
+        self.new_local_media_check.setChecked(False)
         add_form.addRow("", self.new_enable_check)
         add_form.addRow("", self.new_schedule_check)
+        add_form.addRow("", self.new_local_media_check)
 
         add_btn = PrimaryPushButton("新增卡片")
         add_btn.clicked.connect(self.create_profile)
@@ -224,9 +245,9 @@ class MainWindow(FluentWindow):
         table_layout = QVBoxLayout(table_card)
         self.table = TableWidget()
         self.table.setRowCount(0)
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(9)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "名称", "目录", "线程", "Cron", "启用", "定时", "操作"]
+            ["ID", "名称", "目录", "线程", "Cron", "启用", "定时", "本地视频", "操作"]
         )
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
@@ -239,9 +260,48 @@ class MainWindow(FluentWindow):
         self.table.setColumnWidth(4, 120)
         self.table.setColumnWidth(5, 70)
         self.table.setColumnWidth(6, 70)
-        self.table.setColumnWidth(7, 260)
+        self.table.setColumnWidth(7, 90)
+        self.table.setColumnWidth(8, 260)
         table_layout.addWidget(self.table)
         right.addWidget(table_card)
+
+    def _init_qps_controls(self) -> None:
+        self.qps_enable_check.blockSignals(True)
+        self.qps_input.blockSignals(True)
+        raw_value = os.getenv(self._qps_env_key)
+        default_qps = 0.3
+        if raw_value is None:
+            self.qps_enable_check.setChecked(False)
+            self.qps_input.setValue(default_qps)
+            self.qps_input.setEnabled(False)
+            self.qps_enable_check.blockSignals(False)
+            self.qps_input.blockSignals(False)
+            return
+
+        try:
+            qps = max(0.1, float(raw_value))
+        except ValueError:
+            qps = default_qps
+        self.qps_enable_check.setChecked(True)
+        self.qps_input.setValue(qps)
+        self.qps_input.setEnabled(True)
+        os.environ[self._qps_env_key] = f"{qps:.2f}"
+        self.qps_enable_check.blockSignals(False)
+        self.qps_input.blockSignals(False)
+
+    def _apply_qps_setting(self) -> None:
+        enabled = self.qps_enable_check.isChecked()
+        self.qps_input.setEnabled(enabled)
+        if enabled:
+            qps = max(0.1, float(self.qps_input.value()))
+            os.environ[self._qps_env_key] = f"{qps:.2f}"
+            if hasattr(self, "log_text"):
+                self.append_log(f"[throttle-setting] STRM_QPS={qps:.2f}")
+            return
+
+        os.environ.pop(self._qps_env_key, None)
+        if hasattr(self, "log_text"):
+            self.append_log("[throttle-setting] STRM_QPS=default(0.50)")
 
     def append_log(self, message: str) -> None:
         now = datetime.now().strftime("%H:%M:%S")
@@ -299,6 +359,7 @@ class MainWindow(FluentWindow):
             cron=self.cron_input.text().strip() or "0 2 * * *",
             enabled=self.new_enable_check.isChecked(),
             scheduled=self.new_schedule_check.isChecked(),
+            include_local_media=self.new_local_media_check.isChecked(),
         )
         try:
             self.storage.create_profile(profile)
@@ -323,6 +384,7 @@ class MainWindow(FluentWindow):
             self.table.setItem(row, 4, QTableWidgetItem(profile.cron))
             self.table.setItem(row, 5, QTableWidgetItem("是" if profile.enabled else "否"))
             self.table.setItem(row, 6, QTableWidgetItem("是" if profile.scheduled else "否"))
+            self.table.setItem(row, 7, QTableWidgetItem("是" if profile.include_local_media else "否"))
 
             actions = QWidget()
             actions_layout = QHBoxLayout(actions)
@@ -343,7 +405,7 @@ class MainWindow(FluentWindow):
                 btn.setFixedHeight(32)
                 actions_layout.addWidget(btn)
 
-            self.table.setCellWidget(row, 7, actions)
+            self.table.setCellWidget(row, 8, actions)
 
         self._sync_scheduler()
 

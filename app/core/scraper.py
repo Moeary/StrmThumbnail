@@ -75,6 +75,12 @@ def _read_url(strm_path: Path) -> str:
     return ""
 
 
+def _resolve_media_source(media_path: Path) -> str:
+    if media_path.suffix.lower() == ".strm":
+        return _read_url(media_path)
+    return str(media_path)
+
+
 def _net_recv_bytes() -> int:
     if psutil is None:
         return 0
@@ -125,9 +131,9 @@ def extract_frame(url: str, output_path: Path, timestamp: float) -> tuple[bool, 
     return False, 0
 
 
-def generate_nfo(strm_path: Path, duration: float | None) -> bool:
-    nfo_path = strm_path.with_suffix(".nfo")
-    title = strm_path.stem
+def generate_nfo(media_path: Path, duration: float | None) -> bool:
+    nfo_path = media_path.with_suffix(".nfo")
+    title = media_path.stem
     runtime = int((duration or 0) / 60)
 
     content = f"""<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"yes\"?>
@@ -145,26 +151,26 @@ def generate_nfo(strm_path: Path, duration: float | None) -> bool:
         return False
 
 
-def _artifact_candidates(strm_path: Path) -> tuple[list[Path], list[Path], list[Path]]:
-    base = strm_path.with_suffix("")
+def _artifact_candidates(media_path: Path) -> tuple[list[Path], list[Path], list[Path]]:
+    base = media_path.with_suffix("")
     poster_candidates = [
-        strm_path.with_suffix(".jpg"),
-        strm_path.with_suffix(".png"),
+        media_path.with_suffix(".jpg"),
+        media_path.with_suffix(".png"),
         Path(f"{base}-poster.jpg"),
         Path(f"{base}-poster.png"),
     ]
     fanart_candidates = [
-        Path(str(strm_path).replace(".strm", "-fanart.jpg")),
-        Path(str(strm_path).replace(".strm", "-fanart.png")),
-        strm_path.parent / "fanart.jpg",
-        strm_path.parent / "fanart.png",
+        Path(f"{base}-fanart.jpg"),
+        Path(f"{base}-fanart.png"),
+        media_path.parent / "fanart.jpg",
+        media_path.parent / "fanart.png",
     ]
-    nfo_candidates = [strm_path.with_suffix(".nfo")]
+    nfo_candidates = [media_path.with_suffix(".nfo")]
     return poster_candidates, fanart_candidates, nfo_candidates
 
 
-def get_artifact_state(strm_path: Path) -> ArtifactState:
-    poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(strm_path)
+def get_artifact_state(media_path: Path) -> ArtifactState:
+    poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(media_path)
     poster_exists = any(path.exists() for path in poster_candidates)
     fanart_exists = any(path.exists() for path in fanart_candidates)
     nfo_exists = any(path.exists() for path in nfo_candidates)
@@ -175,8 +181,8 @@ def get_artifact_state(strm_path: Path) -> ArtifactState:
     )
 
 
-def plan_for_incremental(strm_path: Path, base_options: ScrapeOptions) -> PlanResult:
-    state = get_artifact_state(strm_path)
+def plan_for_incremental(media_path: Path, base_options: ScrapeOptions) -> PlanResult:
+    state = get_artifact_state(media_path)
     need_poster = base_options.generate_poster and not state.poster_exists
     need_fanart = base_options.generate_fanart and not state.fanart_exists
     need_nfo = base_options.generate_nfo and not state.nfo_exists
@@ -198,32 +204,31 @@ def plan_for_incremental(strm_path: Path, base_options: ScrapeOptions) -> PlanRe
 
 
 def process_single_strm(
-    strm_path: Path,
+    media_path: Path,
     options: ScrapeOptions,
     limiter: QPSLimiter,
 ) -> ProcessResult:
-    poster_path = strm_path.with_suffix(".jpg")
-    fanart_path = Path(str(strm_path).replace(".strm", "-fanart.jpg"))
-    nfo_path = strm_path.with_suffix(".nfo")
+    poster_path = media_path.with_suffix(".jpg")
+    fanart_path = Path(f"{media_path.with_suffix('')}-fanart.jpg")
 
     mode_full = options.full or options.overwrite
 
     if not mode_full:
-        state = get_artifact_state(strm_path)
+        state = get_artifact_state(media_path)
         need_poster = options.generate_poster and not state.poster_exists
         need_fanart = options.generate_fanart and not state.fanart_exists
         need_nfo = options.generate_nfo and not state.nfo_exists
         if not (need_poster or need_fanart or need_nfo):
-            return ProcessResult(status="skipped", path=strm_path, message="already exists")
+            return ProcessResult(status="skipped", path=media_path, message="already exists")
     else:
-        poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(strm_path)
+        poster_candidates, fanart_candidates, nfo_candidates = _artifact_candidates(media_path)
         for p in [*poster_candidates, *fanart_candidates, *nfo_candidates]:
             if p.exists():
                 p.unlink(missing_ok=True)
 
-    url = _read_url(strm_path)
+    url = _resolve_media_source(media_path)
     if not url:
-        return ProcessResult(status="failed", path=strm_path, message="empty strm")
+        return ProcessResult(status="failed", path=media_path, message="empty source")
 
     limiter.wait()
 
@@ -233,7 +238,7 @@ def process_single_strm(
     downloaded = max(0, after - before)
 
     if not duration:
-        return ProcessResult(status="failed", path=strm_path, message="ffprobe failed", downloaded_bytes=downloaded)
+        return ProcessResult(status="failed", path=media_path, message="ffprobe failed", downloaded_bytes=downloaded)
 
     success = True
     output_size = 0
@@ -248,8 +253,8 @@ def process_single_strm(
         success = success and ok
         output_size += size
     if options.generate_nfo:
-        success = success and generate_nfo(strm_path, duration)
+        success = success and generate_nfo(media_path, duration)
 
     if success:
-        return ProcessResult(status="success", path=strm_path, output_size=output_size, downloaded_bytes=downloaded)
-    return ProcessResult(status="failed", path=strm_path, message="task failed", output_size=output_size, downloaded_bytes=downloaded)
+        return ProcessResult(status="success", path=media_path, output_size=output_size, downloaded_bytes=downloaded)
+    return ProcessResult(status="failed", path=media_path, message="task failed", output_size=output_size, downloaded_bytes=downloaded)
