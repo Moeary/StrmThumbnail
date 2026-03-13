@@ -12,6 +12,7 @@ from .scraper import (
     QPSLimiter,
     ScrapeOptions,
     get_artifact_state,
+    infer_media_extension,
     plan_for_incremental,
     process_single_strm,
 )
@@ -48,11 +49,18 @@ class Runner:
         self.storage = storage
 
     @staticmethod
-    def _collect_profile_files(root: Path, profile: Profile) -> list[Path]:
-        files = list(root.glob("**/*.strm"))
+    def _collect_profile_files(root: Path, profile: Profile, allowed_extensions: set[str]) -> list[Path]:
+        files: list[Path] = []
+
+        for strm in root.glob("**/*.strm"):
+            media_ext = infer_media_extension(strm)
+            if media_ext and media_ext in allowed_extensions:
+                files.append(strm)
+
         if profile.include_local_media:
-            for ext in (".mp4", ".mkv", ".MP4", ".MKV"):
+            for ext in allowed_extensions:
                 files.extend(root.glob(f"**/*{ext}"))
+                files.extend(root.glob(f"**/*{ext.upper()}"))
         # Keep deterministic order for stable logs and progress behavior.
         return sorted(set(files))
 
@@ -68,6 +76,7 @@ class Runner:
         full_mode = mode == "full"
         files_by_profile: list[tuple[Profile, list[Path]]] = []
         planned_by_profile: list[tuple[Profile, list[tuple[Path, ScrapeOptions]]]] = []
+        allowed_extensions = set(self.storage.get_allowed_media_extensions())
 
         def log(message: str) -> None:
             if on_log:
@@ -81,7 +90,7 @@ class Runner:
             if not root.exists():
                 log(f"[invalid-path] {profile.name}: {root}")
                 continue
-            files = self._collect_profile_files(root, profile)
+            files = self._collect_profile_files(root, profile, allowed_extensions)
             log(f"[profile] {profile.name} files={len(files)} mode={mode}")
             files_by_profile.append((profile, files))
 

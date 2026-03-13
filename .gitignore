@@ -1,10 +1,13 @@
-plan.md
 # pixi environments
 .pixi/*
 !.pixi/config.toml
 
+# local output and editor artifacts
 strm/*
 .vscode/*
-
 *.pyc
-*.db
+
+# local sqlite database and journals
+config/strmthumbnail/*.db
+config/strmthumbnail/*.db-*
+a.md

@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 try:
     import psutil
@@ -79,6 +80,18 @@ def _resolve_media_source(media_path: Path) -> str:
     if media_path.suffix.lower() == ".strm":
         return _read_url(media_path)
     return str(media_path)
+
+
+def infer_media_extension(media_path: Path) -> str:
+    if media_path.suffix.lower() != ".strm":
+        return media_path.suffix.lower()
+
+    source = _read_url(media_path)
+    if not source:
+        return ""
+
+    parsed = urlparse(source)
+    return Path(unquote(parsed.path)).suffix.lower()
 
 
 def _net_recv_bytes() -> int:

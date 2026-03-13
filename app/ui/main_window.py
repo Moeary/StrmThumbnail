@@ -82,12 +82,17 @@ class MainWindow(FluentWindow):
         self.dashboard.setObjectName("dashboard")
         self.addSubInterface(self.dashboard, FIF.APPLICATION, "任务计划")
 
+        self.settings_page = QWidget(self)
+        self.settings_page.setObjectName("settings_page")
+        self.addSubInterface(self.settings_page, FIF.SETTING, "设置")
+
         self.root_layout = QVBoxLayout(self.dashboard)
         self.root_layout.setContentsMargins(12, 12, 12, 12)
         self.root_layout.setSpacing(10)
 
         self._build_top_bar()
         self._build_body()
+        self._build_settings_page()
         self.refresh_profiles()
         self._apply_theme()
 
@@ -222,7 +227,7 @@ class MainWindow(FluentWindow):
         self.new_enable_check.setChecked(True)
         self.new_schedule_check = CheckBox("启用定时任务")
         self.new_schedule_check.setChecked(True)
-        self.new_local_media_check = CheckBox("包含本地视频(mp4/mkv)")
+        self.new_local_media_check = CheckBox("包含本地媒体(按设置格式)")
         self.new_local_media_check.setChecked(False)
         add_form.addRow("", self.new_enable_check)
         add_form.addRow("", self.new_schedule_check)
@@ -264,6 +269,43 @@ class MainWindow(FluentWindow):
         self.table.setColumnWidth(8, 260)
         table_layout.addWidget(self.table)
         right.addWidget(table_card)
+
+    def _build_settings_page(self) -> None:
+        root = QVBoxLayout(self.settings_page)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(10)
+
+        title = QLabel("设置")
+        title.setStyleSheet("font-size:22px;font-weight:700;")
+        root.addWidget(title)
+
+        card = SimpleCardWidget()
+        form = QFormLayout(card)
+        form.setContentsMargins(12, 12, 12, 12)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(10)
+
+        self.media_ext_input = LineEdit()
+        self.media_ext_input.setPlaceholderText("例如: mp4,mkv")
+        self.media_ext_input.setText(",".join(self.storage.get_allowed_media_extensions()))
+        form.addRow("允许处理格式", self.media_ext_input)
+
+        hint = BodyLabel("仅处理这些扩展名；STRM 会按 URL 后缀过滤。留空将回退默认 mp4,mkv。")
+        form.addRow("", hint)
+
+        save_btn = PrimaryPushButton("保存设置")
+        save_btn.clicked.connect(self.save_settings)
+        form.addRow("", save_btn)
+
+        root.addWidget(card)
+        root.addStretch(1)
+
+    def save_settings(self) -> None:
+        raw = self.media_ext_input.text().strip()
+        saved = self.storage.set_allowed_media_extensions(raw)
+        self.media_ext_input.setText(",".join(saved))
+        self.append_log(f"[settings] allowed_media_extensions={','.join(saved)}")
+        QMessageBox.information(self, "设置已保存", "格式设置已生效，后续运行将按该列表过滤")
 
     def _init_qps_controls(self) -> None:
         self.qps_enable_check.blockSignals(True)

@@ -56,7 +56,7 @@ class ProfileEditorDialog(QDialog):
         self.fanart_pct_spin.setSingleStep(0.01)
         self.fanart_pct_spin.setValue(profile.fanart_pct)
 
-        self.local_media_check = CheckBox("包含本地视频(mp4/mkv)")
+        self.local_media_check = CheckBox("包含本地媒体(按设置格式)")
         self.local_media_check.setChecked(profile.include_local_media)
 
         browse_button = PushButton("浏览")
